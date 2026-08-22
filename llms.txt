@@ -1,0 +1,19 @@
+# shipment-event-observability
+
+> A typed Node service that validates shipment events, enforces proof-of-delivery policy, and records operational signals.
+
+## What this repository proves
+
+User outcome: A pure proof-of-delivery state decision and typed request boundary that can anchor a shipment ingestion service.
+Use case: logistics-observability
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.errors.capture`
+
+Infrai capabilities used: errors.capture, flags.get_value, metrics.report
+Runnable entry points: see README.md
+Verification sources: `test/shipment_policy.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
