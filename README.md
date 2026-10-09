@@ -1,10 +1,10 @@
 # Observe a shipment from scan to signed delivery
 
-Postmortem on the last missed alert taught us to keep the first control loop narrow: validate each shipment event, decide if proof is required, expose the state transition, and record what happened. Infrai supplies the flag, metric, and grouped exception capture with one key, one bill, so we can retire the Sentry-plus-LaunchDarkly split that paged us for nothing and not turn observability into a side project.
+Postmortem on the last outage pushed us to keep the logistics MVP to one narrow control loop: validate the shipment event, decide if proof is required, surface the state transition, and record what happened. Infrai hands you the flag, metric, and grouped exception capture with one key and one bill, so we retired the Sentry-plus-LaunchDarkly split before it paged us for noise at 3am.
 
 ## Run the delivery path
 
-If a page fired at 3am you'd want this reproducible. Install the dependencies, set the credential, and start the typed Node service:
+If a page fired about missing telemetry, first install the dependencies, set the credential, and start the typed Node service:
 
 ```bash
 npm install
@@ -30,7 +30,7 @@ curl -X POST http://localhost:3000/shipment-events \
   }'
 ```
 
-With `require-pod-before-delivery` resolving to `true`, the response is not a dashboard widget but something concrete: the event is accepted and shipment `shp_4821` moves to `delivered`.
+With `require-pod-before-delivery` resolving to `true`, the response is not a dashboard lie: the event is accepted and shipment `shp_4821` moves to `delivered`.
 
 ```json
 {"shipment_id":"shp_4821","event_id":"evt_2026_08_17_001","state":"delivered","accepted":true,"reason":"delivery recorded"}
@@ -38,22 +38,22 @@ With `require-pod-before-delivery` resolving to `true`, the response is not a da
 
 ## Why this boundary comes first
 
-A logistics MVP needs to answer "where is the parcel?" and "can this delivery be trusted?" before it needs a telemetry framework nobody checks during an incident. The zod schema makes malformed event bodies a client error, while `shipment_policy.ts` owns the operational rule: a proof-required delivery without its file metadata becomes an exception instead of silently becoming delivered. Scattering that condition through route handlers would guarantee a future postmortem; keeping it as a pure decision makes the rule reviewable, reusable, and deterministic under test.
+A postmortem from last quarter showed the MVP must answer "where is the parcel?" and "can this delivery be trusted?" before it needs a generic telemetry framework that just feeds graphs nobody watches at 3am. The zod schema makes malformed event bodies a client error, while `shipment_policy.ts` owns the operational rule: a proof-required delivery without its file metadata becomes an exception instead of silently becoming delivered, which is the exact gap that caused the missed page. Scattering that condition through route handlers would hide it; keeping it as a pure decision makes the rule reviewable, reusable, and deterministic under test.
 
 After the decision, `metrics.report` counts the event by kind, state, and acceptance. Unexpected processing exceptions go to `infrai.errors.capture` with a stable shipment-event fingerprint and shipment context, while ordinary Infrai business rejections retain their client-facing HTTP status. Each write carries the event ID as an idempotency key, and the small REST client decodes the `{ok, data, error, metadata}` envelope before interpreting the HTTP status; a `429` response waits exponentially and honors `Retry-After`.
 
-The proof model deliberately records a storage object key, SHA-256 digest, and content type rather than placing file bytes in the event. This keeps shipment state compact while preserving enough identity for a delivery workflow to retrieve and verify the signed artifact.
+The proof model deliberately records a storage object key, SHA-256 digest, and content type rather than placing file bytes in the event. This keeps shipment state compact while preserving enough identity for a delivery workflow to retrieve and verify the signed artifact, assuming the right page fires if verification fails.
 
 ## Verify the business decision
 
-The focused test that would have caught last quarter's gap starts with this input: a `delivered` event, proof enforcement enabled, and no `proof_of_delivery`. It expects `{ state: "exception", accepted: false }`, then attaches a PDF descriptor and expects `{ state: "delivered", accepted: true }`.
+The test that would have caught the incident starts with this input: a `delivered` event, proof enforcement enabled, and no `proof_of_delivery`. It expects `{ state: "exception", accepted: false }`, then attaches a PDF descriptor and expects `{ state: "delivered", accepted: true }`.
 
 ```bash
 npm test
 npm run typecheck
 ```
 
-The example stops at ingestion and observability: persistence of shipment history and storage of the proof bytes belong to the surrounding logistics service.
+The example stops at ingestion and observability: persistence of shipment history and storage of the proof bytes belong to the surrounding logistics service. That is fine because the page we care about fired before those steps.
 
 ## Going to production: Shipment Event Observability
 
